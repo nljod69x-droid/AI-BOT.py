@@ -1,0 +1,181 @@
+import telebot
+import requests
+import time
+import threading
+
+# =====================
+BOT_TOKEN = "8220648013:AAFjrSgYVfSG65mrFzjHQNXckNHt-r_BwHU"
+ALLOWED_GROUP_ID = -1003152171870
+OWNER_ID = 6474022249  # তোমার Telegram numeric ID
+OWNER_USERNAME = "@NLHYPERR"
+like_request_tracker = {}
+VIP_USERS = {OWNER_ID}
+# =====================
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+# 🔹 Function: Call API
+def call_api(region, uid):
+    url = f"https://jenil-x-like-1.vercel.app/like?uid={uid}&server_name={region}"
+    try:
+        response = requests.get(url, timeout=2)
+        if response.status_code != 200 or not response.text.strip():
+            return "API_ERROR"
+        return response.json()
+    except:
+        return "API_ERROR"
+
+# 🔹 Function: Process Like Command
+def process_like(message, region, uid):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    if user_id not in VIP_USERS and like_request_tracker.get(user_id, False):
+        bot.reply_to(message, "⚠️ You have exceeded your daily request limit! ⏳ Try again later.")
+        return
+
+    processing_msg = bot.reply_to(message, "⏳ Processing Your Request... 🔄")
+
+    stages = [
+        "🔄 Fetching data from server... 10%",
+        "🔄 Validating UID & Region... 30%",
+        "🔄 Sending like request... 60%",
+        "🔄 Almost Done... 90%"
+    ]
+
+    for s in stages:
+        time.sleep(1)
+        bot.edit_message_text(s, chat_id, processing_msg.message_id)
+
+    response = call_api(region, uid)
+
+    if response == "API_ERROR":
+        bot.edit_message_text("🚨 API ERROR! ⚒️ Please wait a few hours.", chat_id, processing_msg.message_id)
+        return
+
+    if response.get("status") == 1:
+        if user_id not in VIP_USERS:
+            like_request_tracker[user_id] = True
+
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=processing_msg.message_id,
+            text=f"✅ **Like Added Successfully!**\n"
+                 f"🔹 **UID:** `{response.get('UID', 'N/A')}`\n"
+                 f"🔸 **Player Nickname:** `{response.get('PlayerNickname', 'N/A')}`\n"
+                 f"🔸 **Likes Before:** `{response.get('LikesbeforeCommand', 'N/A')}`\n"
+                 f"🔸 **Likes After:** `{response.get('LikesafterCommand', 'N/A')}`\n"
+                 f"🔸 **Likes By Bot:** `{response.get('LikesGivenByAPI', 'N/A')}`\n\n"
+                 "🗿 **SHARE US FOR MORE:**\n https://youtube.com/@HTZJENIL",
+            parse_mode="Markdown"
+        )
+    else:
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=processing_msg.message_id,
+            text=f"💔 UID `{uid}` has already received Max Likes for Today 💔.\n"
+                 "🔄 Please Try a different UID.",
+            parse_mode="Markdown"
+        )
+
+# ===================== COMMANDS =====================
+
+# 🔹 /start Command
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    bot.reply_to(
+        message,
+        "👋 **Welcome to the Like Bot!**\n\n"
+        "Type `/help` to see all available commands 💫",
+        parse_mode="Markdown"
+    )
+
+# 🔹 /like Command
+@bot.message_handler(commands=['like'])
+def handle_like(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+
+    if chat_id != ALLOWED_GROUP_ID:
+        bot.reply_to(message, "🚫 This group is not allowed to use this bot! ❌")
+        return
+
+    args = message.text.split()
+    if len(args) != 3:
+        bot.reply_to(message, "❌ Incorrect format!\nUse: `/like {region} {uid}`\n📌 Example: `/like ind 7639417028`", parse_mode="Markdown")
+        return
+
+    region, uid = args[1], args[2]
+
+    if not region.isalpha() or not uid.isdigit():
+        bot.reply_to(message, "⚠️ Invalid input! Region should be text and UID should be numbers.\n📌 Example: `/like ind 1640556162`")
+        return
+
+    threading.Thread(target=process_like, args=(message, region, uid)).start()
+
+# 🔹 /onwer Command
+@bot.message_handler(commands=['onwer'])
+def owner_command(message):
+    bot.reply_to(message, f"👑 MY /GROUP OWNER BY {OWNER_USERNAME}")
+
+# 🔹 /addvip Command (Owner Only)
+@bot.message_handler(commands=['addvip'])
+def add_vip(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "🚫 Only the owner can use this command!")
+        return
+
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        bot.reply_to(message, "❌ Use: `/addvip <user_id>`", parse_mode="Markdown")
+        return
+
+    vip_id = int(args[1])
+    VIP_USERS.add(vip_id)
+    bot.reply_to(message, f"✅ User `{vip_id}` added to VIP list!", parse_mode="Markdown")
+
+# 🔹 /removevip Command (Owner Only)
+@bot.message_handler(commands=['removevip'])
+def remove_vip(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "🚫 Only the owner can use this command!")
+        return
+
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        bot.reply_to(message, "❌ Use: `/removevip <user_id>`", parse_mode="Markdown")
+        return
+
+    vip_id = int(args[1])
+    if vip_id in VIP_USERS:
+        VIP_USERS.remove(vip_id)
+        bot.reply_to(message, f"❌ User `{vip_id}` removed from VIP list!", parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "⚠️ That user is not in the VIP list.")
+
+# 🔹 /help Command
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    if message.from_user.id == OWNER_ID:
+        help_text = (
+            "👑 **OWNER COMMANDS:**\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            "⚙️ `/addvip <user_id>` → Add a VIP user\n"
+            "⚙️ `/removevip <user_id>` → Remove a VIP user\n"
+            "⚙️ `/onwer` → Show bot owner\n"
+            "⚙️ `/like <region> <uid>` → Send like\n"
+            "⚙️ `/help` → Show this menu\n"
+        )
+    else:
+        help_text = (
+            "🤖 **USER COMMANDS:**\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            "💫 `/like <region> <uid>` → Get likes\n"
+            "💫 `/onwer` → Show bot owner\n"
+            "💫 `/help` → Show commands list\n"
+        )
+    bot.reply_to(message, help_text, parse_mode="Markdown")
+
+# ====================================================
+print("✅ Bot is Running...")
+bot.polling(none_stop=True)
